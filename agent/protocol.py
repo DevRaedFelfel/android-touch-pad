@@ -16,7 +16,11 @@ T_SCROLL = 0x02
 T_BUTTON = 0x03
 T_KEY = 0x04
 T_TEXT = 0x05
+T_PING = 0x06
 T_ZOOM = 0x07
+
+# Agent -> client message types
+T_PONG = 0x81
 
 MAX_TEXT_BYTES = 4096  # per TEXT frame, UTF-8
 
@@ -24,6 +28,7 @@ _XY = struct.Struct("<BHhh")  # type, seq, dx, dy   (MOVE and SCROLL)
 _BUTTON = struct.Struct("<BBB")  # type, button (0=L 1=R 2=M), state (0=up 1=down)
 _KEY = struct.Struct("<BHB")  # type, Windows virtual-key, state
 _ZOOM = struct.Struct("<Bh")  # type, delta (120 = one wheel notch)
+_U32 = struct.Struct("<BI")  # type, u32 (PING / PONG)
 
 
 def parse_binary(data: bytes) -> tuple | None:
@@ -62,6 +67,10 @@ def parse_binary(data: bytes) -> tuple | None:
             return ("text", data[1:].decode("utf-8"))
         except UnicodeDecodeError:
             return None
+    if t == T_PING:
+        if n != _U32.size:
+            return None
+        return ("ping", _U32.unpack(data)[1])
     if t == T_ZOOM:
         if n != _ZOOM.size:
             return None
@@ -92,3 +101,11 @@ def encode_text(text: str) -> bytes:
 
 def encode_zoom(delta: int) -> bytes:
     return _ZOOM.pack(T_ZOOM, delta)
+
+
+def encode_ping(t: int) -> bytes:
+    return _U32.pack(T_PING, t & 0xFFFFFFFF)
+
+
+def encode_pong(t: int) -> bytes:
+    return _U32.pack(T_PONG, t & 0xFFFFFFFF)

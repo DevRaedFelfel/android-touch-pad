@@ -7,6 +7,8 @@ export const T_SCROLL = 0x02;
 export const T_BUTTON = 0x03;
 export const T_KEY = 0x04;
 export const T_TEXT = 0x05;
+export const T_PING = 0x06;
+export const T_PONG = 0x81; // agent -> client
 export const T_ZOOM = 0x07;
 
 const moveBuf = new ArrayBuffer(7);
@@ -92,4 +94,20 @@ function frame(str) {
   buf[0] = T_TEXT;
   buf.set(body, 1);
   return buf.buffer;
+}
+
+/** Ping carrying a u32 token that the agent echoes back in a PONG. */
+export function packPing(token) {
+  const buf = new ArrayBuffer(5);
+  const v = new DataView(buf);
+  v.setUint8(0, T_PING);
+  v.setUint32(1, token >>> 0, true);
+  return buf;
+}
+
+/** Token from a PONG frame, or null if the frame is something else. */
+export function parsePong(buf) {
+  if (buf.byteLength !== 5) return null;
+  const v = new DataView(buf);
+  return v.getUint8(0) === T_PONG ? v.getUint32(1, true) : null;
 }
