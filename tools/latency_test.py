@@ -82,7 +82,7 @@ async def run_test(
         await runner.setup()
         site = web.TCPSite(runner, "127.0.0.1", 0)
         await site.start()
-        port = site._server.sockets[0].getsockname()[1]  # noqa: SLF001 (ephemeral port)
+        port = runner.addresses[0][1]  # the ephemeral port that was bound
 
         rtts_us: list[float] = []
         pending: dict[int, int] = {}
