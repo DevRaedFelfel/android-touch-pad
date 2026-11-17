@@ -19,6 +19,17 @@ Turn your Android phone into a low-latency touchpad and keyboard for a Windows l
 - Windows laptop with Python 3.11+
 - Android phone with Chrome, on the same Wi-Fi network (5 GHz recommended)
 
+## Quick start
+
+```
+pip install -r requirements.txt
+python -m agent
+```
+
+Scan the QR code printed in the terminal with the phone camera and open the link in Chrome. Use `--dry-run` to try it without injecting input (works on any OS), `--pair` to pair another phone, `--revoke-all` to forget all phones.
+
+Run the tests with `python -m pytest`.
+
 ## License
 
 [PolyForm Noncommercial License 1.0.0](LICENSE). Free for personal, educational, research and non-profit use. Commercial use requires the author's permission. See [NOTICE](NOTICE).
