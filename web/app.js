@@ -106,14 +106,25 @@ const pingSent = new Map(); // token -> performance.now() when sent
 let pingTimer = 0;
 let pingToken = 0;
 
+const LIVENESS_MS = 2500; // no reply from the agent for this long means the link is dead
+let lastRx = 0;
+let reconnectTimer = 0;
+let dropSocket = () => {}; // closes the current socket and runs its cleanup right away
+
 function startPinging() {
   stopPinging();
   const ping = () => {
     if (!authed || ws.readyState !== 1) return;
-    const token = pingToken++;
-    pingSent.set(token, performance.now());
+    // A silent Wi-Fi drop can leave the socket "open" for minutes. Don't wait for TCP:
+    // if the agent hasn't answered recently, tear it down and reconnect.
+    if (performance.now() - lastRx > LIVENESS_MS) {
+      dropSocket();
+      return;
+    }
+    const pingId = pingToken++;
+    pingSent.set(pingId, performance.now());
     if (pingSent.size > 8) pingSent.delete(pingSent.keys().next().value); // lost pongs
-    ws.send(packPing(token));
+    ws.send(packPing(pingId));
   };
   ping();
   pingTimer = setInterval(ping, 1000);
@@ -125,26 +136,62 @@ function stopPinging() {
   pingSent.clear();
 }
 
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, Math.min(250 * 2 ** retry++, 2000));
+}
+
 function connect() {
+  clearTimeout(reconnectTimer);
   if (fatal) return;
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return; // already connecting/connected
   if (!token) {
     fatal = true;
     setState("Not paired: scan the QR code shown on the laptop", false);
     return;
   }
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.binaryType = "arraybuffer";
+  const sock = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = sock;
+  sock.binaryType = "arraybuffer";
   authed = false;
   setState("connecting…", false);
 
-  ws.onopen = () => ws.send(JSON.stringify({ t: "auth", token, v: 1 }));
-  ws.onmessage = (ev) => {
+  let closed = false;
+  const finish = () => {
+    if (closed) return;
+    closed = true;
+    if (ws === sock) {
+      authed = false;
+      stopPinging();
+      latency.clear();
+      moveAcc.x = moveAcc.y = scrollAcc.x = scrollAcc.y = zoomAcc.x = 0;
+      gestures.reset();
+      releaseBarButtons();
+      dropMods();
+    }
+    if (fatal || ws !== sock) return;
+    setState("reconnecting…", false);
+    scheduleReconnect();
+  };
+  dropSocket = () => {
+    try {
+      sock.close();
+    } catch {
+      /* already closed */
+    }
+    finish(); // don't wait for the browser to notice the dead connection
+  };
+
+  sock.onopen = () => sock.send(JSON.stringify({ t: "auth", token, v: 1 }));
+  sock.onmessage = (ev) => {
+    if (ws !== sock) return;
+    lastRx = performance.now();
     if (typeof ev.data !== "string") {
-      const token = parsePong(ev.data);
-      const t0 = token === null ? undefined : pingSent.get(token);
+      const pongId = parsePong(ev.data);
+      const t0 = pongId === null ? undefined : pingSent.get(pongId);
       if (t0 !== undefined) {
-        pingSent.delete(token);
+        pingSent.delete(pongId);
         latency.add(performance.now() - t0);
         renderStatus();
       }
@@ -157,6 +204,7 @@ function connect() {
       latency.clear();
       setState("connected", true);
       startPinging();
+      acquireWakeLock();
     } else if (msg.t === "err") {
       if (msg.reason === "bad_token" || msg.reason === "bad_version") {
         fatal = true;
@@ -164,18 +212,53 @@ function connect() {
       }
     }
   };
-  ws.onclose = () => {
-    authed = false;
-    stopPinging();
-    latency.clear();
-    moveAcc.x = moveAcc.y = scrollAcc.x = scrollAcc.y = zoomAcc.x = 0;
-    gestures.reset();
-    releaseBarButtons();
-    dropMods();
-    if (fatal) return;
-    setState("reconnecting…", false);
-    setTimeout(connect, Math.min(250 * 2 ** retry++, 2000));
-  };
+  sock.onclose = finish;
+}
+
+// Coming back to the app (unlock, app switch): timers were throttled, so check the link now.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  if (authed && performance.now() - lastRx > LIVENESS_MS) dropSocket();
+  if (!authed && !fatal) {
+    retry = 0;
+    connect();
+  }
+  acquireWakeLock();
+});
+
+// ---------- keep the screen on ----------
+let wakeLock = null;
+
+function showToast(text, ms = 7000) {
+  const el = $("toast");
+  el.textContent = text;
+  el.hidden = false;
+  setTimeout(() => {
+    el.hidden = true;
+  }, ms);
+}
+
+/** Screen Wake Lock needs HTTPS. Without it, tell the user once how to avoid the screen sleeping. */
+async function acquireWakeLock() {
+  if (!authed || wakeLock) return;
+  try {
+    if (typeof isSecureContext !== "undefined" && isSecureContext && navigator.wakeLock) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => {
+        wakeLock = null;
+      });
+      return;
+    }
+  } catch {
+    /* denied, e.g. low battery: fall through to the hint */
+  }
+  try {
+    if (localStorage.getItem("wakeHintShown")) return;
+    localStorage.setItem("wakeHintShown", "1");
+  } catch {
+    /* storage unavailable: show the hint every time */
+  }
+  showToast("The screen may turn off while idle. Raise the screen timeout, or start the agent with --https.");
 }
 
 // ---------- outgoing streams ----------
