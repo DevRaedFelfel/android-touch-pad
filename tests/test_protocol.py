@@ -50,3 +50,13 @@ def test_invalid_values_are_rejected():
     assert parse_binary(encode_key(0x41, 2)) is None  # bad state
     assert parse_binary(b"\x03\x00") is None  # truncated button
     assert parse_binary(b"\x07\x00") is None  # truncated zoom
+
+
+def test_text_roundtrip_and_limits():
+    from agent.protocol import MAX_TEXT_BYTES, encode_text
+
+    assert parse_binary(encode_text("hello, مرحبا 😀")) == ("text", "hello, مرحبا 😀")
+    assert parse_binary(b"\x05") is None  # empty text
+    assert parse_binary(b"\x05\xff\xfe") is None  # invalid UTF-8
+    assert parse_binary(b"\x05" + b"a" * MAX_TEXT_BYTES) is not None
+    assert parse_binary(b"\x05" + b"a" * (MAX_TEXT_BYTES + 1)) is None

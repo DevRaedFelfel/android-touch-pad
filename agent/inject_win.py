@@ -10,6 +10,7 @@ every platform; that lets the layout be unit-tested off Windows.
 from __future__ import annotations
 
 import ctypes
+import struct
 import sys
 from collections import deque
 
@@ -24,7 +25,11 @@ _BUTTON_FLAGS = {0: (0x0002, 0x0004), 1: (0x0008, 0x0010), 2: (0x0020, 0x0040)}
 
 KEYEVENTF_EXTENDEDKEY = 0x0001
 KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
 VK_CONTROL = 0x11
+VK_TAB = 0x09
+VK_RETURN = 0x0D
+_TEXT_CHUNK = 128  # max INPUT records per SendInput call
 # Keys that need the extended-key flag so Windows treats them as the dedicated
 # navigation keys rather than numpad keys.
 _EXTENDED_VKS = frozenset(
@@ -118,6 +123,9 @@ class DryRunInjector:
         (self.keys_down.add if down else self.keys_down.discard)(vk)
         self.events.append(("key", vk, down))
 
+    def text(self, text: str) -> None:
+        self.events.append(("text", text))
+
     def release_all(self) -> None:
         for b in sorted(self.buttons_down):
             self.button(b, False)
@@ -202,6 +210,38 @@ class WindowsInjector:
     def key(self, vk: int, down: bool) -> None:
         (self._keys_down.add if down else self._keys_down.discard)(vk)
         self._send(self._keyboard(vk, down))
+
+    def _unicode(self, unit: int, down: bool) -> INPUT:
+        inp = INPUT(type=INPUT_KEYBOARD)
+        inp.ki.wVk = 0
+        inp.ki.wScan = unit
+        inp.ki.dwFlags = KEYEVENTF_UNICODE | (0 if down else KEYEVENTF_KEYUP)
+        return inp
+
+    def text(self, text: str) -> None:
+        """Type text as Unicode key events (layout independent, handles emoji).
+
+        Newlines and tabs become Enter and Tab key presses; other control characters
+        are dropped.
+        """
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        data = text.encode("utf-16-le", errors="replace")
+        units = struct.unpack(f"<{len(data) // 2}H", data)
+        batch: list[INPUT] = []
+        for u in units:
+            if u == 0x0A:
+                batch += [self._keyboard(VK_RETURN, True), self._keyboard(VK_RETURN, False)]
+            elif u == 0x09:
+                batch += [self._keyboard(VK_TAB, True), self._keyboard(VK_TAB, False)]
+            elif u < 0x20 or u == 0x7F:
+                continue
+            else:
+                batch += [self._unicode(u, True), self._unicode(u, False)]
+            if len(batch) >= _TEXT_CHUNK:
+                self._send(*batch)
+                batch = []
+        if batch:
+            self._send(*batch)
 
     def release_all(self) -> None:
         for b in sorted(self._buttons_down):

@@ -47,7 +47,10 @@ class _FakeUser32:
                     rec.append(("mouse", mi.dx, mi.dy, mi.mouseData, mi.dwFlags))
                 else:
                     ki = inp.ki
-                    rec.append(("key", ki.wVk, ki.dwFlags))
+                    if ki.dwFlags & 0x0004:  # KEYEVENTF_UNICODE
+                        rec.append(("uni", ki.wScan, ki.dwFlags))
+                    else:
+                        rec.append(("key", ki.wVk, ki.dwFlags))
             self.calls.append(rec)
             return n
 
@@ -110,3 +113,42 @@ def test_windows_keys_flag_extended_keys_and_release_on_exit(win):
     assert fake.calls[1] == [("key", 0x41, 0)]
     assert fake.calls[2] == [("key", 0x25, 0x0003)]  # key up + extended
     assert fake.calls[3] == [("key", 0x41, 0x0002)]
+
+
+def test_windows_text_is_typed_as_unicode_down_up_pairs(win):
+    inj, fake = win
+    inj.text("aé")
+    flat = [item for call in fake.calls for item in call]
+    assert flat == [
+        ("uni", ord("a"), 0x0004),
+        ("uni", ord("a"), 0x0006),
+        ("uni", ord("é"), 0x0004),
+        ("uni", ord("é"), 0x0006),
+    ]
+
+
+def test_windows_text_sends_surrogate_pairs_for_emoji(win):
+    inj, fake = win
+    inj.text("\U0001F600")  # U+1F600 = D83D DE00
+    downs = [item[1] for call in fake.calls for item in call if item[2] == 0x0004]
+    assert downs == [0xD83D, 0xDE00]
+
+
+def test_windows_text_maps_newline_and_tab_and_drops_control_chars(win):
+    inj, fake = win
+    inj.text("a\r\nb\tc\x07")
+    flat = [item for call in fake.calls for item in call]
+    assert flat == [
+        ("uni", ord("a"), 0x0004), ("uni", ord("a"), 0x0006),
+        ("key", 0x0D, 0), ("key", 0x0D, 0x0002),  # CRLF is a single Enter
+        ("uni", ord("b"), 0x0004), ("uni", ord("b"), 0x0006),
+        ("key", 0x09, 0), ("key", 0x09, 0x0002),
+        ("uni", ord("c"), 0x0004), ("uni", ord("c"), 0x0006),
+    ]
+
+
+def test_windows_long_text_is_sent_in_bounded_chunks(win):
+    inj, fake = win
+    inj.text("x" * 1000)
+    assert all(len(call) <= 130 for call in fake.calls)
+    assert sum(len(call) for call in fake.calls) == 2000

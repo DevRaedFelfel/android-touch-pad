@@ -72,6 +72,10 @@ class InputController:
         self._ops.append(["key", vk, state])
         self._wake.set()
 
+    def text(self, text: str) -> None:
+        self._ops.append(["text", text])
+        self._wake.set()
+
     def handle(self, parsed: tuple) -> None:
         """Route a message from protocol.parse_binary."""
         kind = parsed[0]
@@ -85,6 +89,8 @@ class InputController:
             self.key(parsed[1], parsed[2])
         elif kind == "zoom":
             self.zoom(parsed[1])
+        elif kind == "text":
+            self.text(parsed[1])
 
     def take_ops(self) -> list[list]:
         ops, self._ops = self._ops, []
@@ -108,6 +114,8 @@ class InputController:
             self.injector.button(op[1], op[2] == 1)
         elif kind == "key":
             self.injector.key(op[1], op[2] == 1)
+        elif kind == "text":
+            self.injector.text(op[1])
 
     async def run(self) -> None:
         while True:
