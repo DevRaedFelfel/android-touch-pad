@@ -78,6 +78,74 @@ def test_client_can_reconnect_after_being_dropped(tmp_path):
     assert reply["t"] == "ok" and pong == encode_pong(7)
 
 
+# ---------- replacing a phone that vanished silently ----------
+
+
+def _hang_first_close(monkeypatch):
+    """Make the first WebSocket close() never finish, like a close handshake with a dead phone."""
+    real_close = web.WebSocketResponse.close
+    calls = []
+
+    async def close(self, *args, **kwargs):
+        calls.append(self)
+        if len(calls) == 1:
+            await asyncio.sleep(60)
+        return await real_close(self, *args, **kwargs)
+
+    monkeypatch.setattr(web.WebSocketResponse, "close", close)
+    return calls
+
+
+def test_new_phone_is_not_blocked_by_a_dead_old_one(tmp_path, monkeypatch):
+    import time
+
+    async def go():
+        srv, inj, token = await _start(tmp_path)
+        _hang_first_close(monkeypatch)
+        async with aiohttp.ClientSession() as s:
+            ws1 = await s.ws_connect(srv.make_url("/ws"))
+            await _auth(ws1, token)
+            await ws1.send_bytes(encode_button(0, 1))
+            await asyncio.sleep(0.05)
+            t0 = time.monotonic()
+            ws2 = await s.ws_connect(srv.make_url("/ws"))
+            reply = await _auth(ws2, token)
+            elapsed = time.monotonic() - t0
+            released = inj.buttons_down == set()
+            await ws2.close()
+        await srv.close()
+        return reply, elapsed, released
+
+    reply, elapsed, released = run(go())
+    assert reply["t"] == "ok"
+    assert elapsed < 1.0, f"login waited {elapsed:.1f}s for the old socket to close"
+    assert released  # what the old phone was holding was released
+
+
+def test_messages_from_a_replaced_phone_are_ignored(tmp_path, monkeypatch):
+    from agent.protocol import encode_move
+
+    async def go():
+        srv, inj, token = await _start(tmp_path)
+        _hang_first_close(monkeypatch)  # old socket stays open on the server for a while
+        async with aiohttp.ClientSession() as s:
+            ws1 = await s.ws_connect(srv.make_url("/ws"))
+            await _auth(ws1, token)
+            ws2 = await s.ws_connect(srv.make_url("/ws"))
+            await _auth(ws2, token)
+            for i in range(20):  # the old phone wakes up and keeps sending
+                await ws1.send_bytes(encode_move(i, 5, 5))
+            await asyncio.sleep(0.2)
+            await ws2.send_bytes(encode_move(0, 1, 1))  # the current phone still works
+            await asyncio.sleep(0.1)
+            await ws2.close()
+        await srv.close()
+        return inj
+
+    inj = run(go())
+    assert (inj.total_dx, inj.total_dy) == (1, 1)
+
+
 # ---------- blocked SendInput is reported once ----------
 
 

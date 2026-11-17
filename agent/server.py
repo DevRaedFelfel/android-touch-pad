@@ -210,12 +210,14 @@ async def ws_handler(request: web.Request) -> web.StreamResponse:
         return await reject("bad_token")
 
     # Only one active client: a new authenticated connection replaces the old one.
+    # Claim the slot first and close the old socket in the background: if the old phone
+    # vanished silently its close handshake could take ~10 s, and the new phone must not wait.
     old = state.get("active")
-    if old is not None and not old.closed:
-        await old.close()
-        ctrl.release_all()
     state["active"] = ws
     state["last_rx"] = time.monotonic()
+    if old is not None and not old.closed:
+        ctrl.release_all()
+        _close_in_background(app, old)
 
     w, h = ctrl.injector.screen_size()
     await ws.send_json({"t": "ok", "v": PROTOCOL_VERSION, "screen": {"w": w, "h": h}})
@@ -223,6 +225,8 @@ async def ws_handler(request: web.Request) -> web.StreamResponse:
 
     try:
         async for msg in ws:
+            if state["active"] is not ws:
+                break  # replaced by a newer phone, or dropped by the watchdog: ignore the rest
             state["last_rx"] = time.monotonic()  # liveness for the idle watchdog
             if msg.type == WSMsgType.BINARY:
                 parsed = parse_binary(msg.data)
@@ -243,6 +247,13 @@ async def _index(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(request.app[STATE]["web_dir"] / "index.html")
 
 
+def _close_in_background(app: web.Application, ws: web.WebSocketResponse) -> None:
+    tasks = app[STATE]["closers"]
+    task = asyncio.create_task(ws.close())  # may wait on a dead peer; never block on it
+    tasks.add(task)
+    task.add_done_callback(tasks.discard)
+
+
 async def _watchdog(app: web.Application) -> None:
     """Drop a client that went silent (Wi-Fi lost, phone asleep) and release its input.
 
@@ -251,7 +262,6 @@ async def _watchdog(app: web.Application) -> None:
     modifier key could stay pressed for minutes.
     """
     state = app[STATE]
-    closers: set[asyncio.Task] = set()
     while True:
         await asyncio.sleep(0.5)
         ws = state.get("active")
@@ -262,9 +272,7 @@ async def _watchdog(app: web.Application) -> None:
             log.warning("client silent for %.1f s: releasing input and dropping it", idle)
             state["active"] = None
             app[CONTROLLER].release_all()
-            task = asyncio.create_task(ws.close())  # may wait for a dead peer; don't block
-            closers.add(task)
-            task.add_done_callback(closers.discard)
+            _close_in_background(app, ws)
 
 
 async def _background_tasks(app: web.Application):
@@ -295,6 +303,7 @@ def create_app(
         "auth_timeout": auth_timeout,
         "idle_timeout": idle_timeout,
         "last_rx": 0.0,
+        "closers": set(),  # background close tasks (kept so they aren't garbage collected)
         "web_dir": web_dir,
     }
     app.cleanup_ctx.append(_background_tasks)
