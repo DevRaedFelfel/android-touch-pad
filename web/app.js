@@ -640,7 +640,9 @@ $("btn-fs").addEventListener("click", async () => {
     } else {
       await document.documentElement.requestFullscreen({ navigationUI: "hide" });
       try {
-        await screen.orientation.lock("landscape");
+        // A wide layout already turns the UI itself; locking the screen to landscape as
+        // well would turn it twice.
+        if (settings.layout === "normal") await screen.orientation.lock("landscape");
       } catch {
         /* not supported or not allowed: stay in the current orientation */
       }
