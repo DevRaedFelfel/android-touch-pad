@@ -1,7 +1,15 @@
+:root {
+  --bar-h: 68px;
+  --bg: #0b0d10;
+  --panel: #161a20;
+  --line: #262c35;
+  --accent: #2ecc71;
+}
+
 html, body {
   margin: 0;
   height: 100%;
-  background: #0b0d10;
+  background: var(--bg);
   color: #9aa4b2;
   font: 13px/1.4 system-ui, sans-serif;
   overscroll-behavior: none;
@@ -13,7 +21,10 @@ html, body {
 
 #pad {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));
   touch-action: none;
 }
 
@@ -38,5 +49,82 @@ html, body {
 }
 
 #dot.on {
-  background: #2ecc71;
+  background: var(--accent);
+}
+
+#bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--bar-h);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  gap: 8px;
+  padding-left: 12px;
+  padding-right: 12px;
+  box-sizing: content-box;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  z-index: 3;
+}
+
+#bar.left-handed {
+  flex-direction: row-reverse;
+}
+
+#bar button {
+  touch-action: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #1d232b;
+  color: #cfd6df;
+  font: inherit;
+  font-size: 15px;
+  margin: 8px 0;
+}
+
+#bar .mb {
+  flex: 1;
+}
+
+#bar .tool {
+  width: 52px;
+  font-size: 20px;
+}
+
+#bar button.down {
+  background: #274436;
+  border-color: var(--accent);
+}
+
+#settings {
+  position: fixed;
+  right: 8px;
+  bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px) + 8px);
+  width: min(320px, calc(100vw - 16px));
+  padding: 12px 14px;
+  display: grid;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: #cfd6df;
+  z-index: 4;
+}
+
+#settings[hidden] {
+  display: none;
+}
+
+#settings label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#settings input[type="range"] {
+  flex: 1;
+  max-width: 170px;
 }
