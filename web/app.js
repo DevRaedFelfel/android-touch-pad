@@ -244,6 +244,7 @@ const out = {
     sendReliable(packButton(b, down ? 1 : 0));
   },
   click(b) {
+    if (!authed) return; // no haptic tick for a click that won't reach the laptop
     out.button(b, true);
     out.button(b, false);
     haptic();
