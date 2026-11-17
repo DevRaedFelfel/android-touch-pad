@@ -67,6 +67,8 @@ function connect() {
   };
   ws.onclose = () => {
     authed = false;
+    pendX = 0;
+    pendY = 0;
     if (fatal) return;
     setState("reconnecting…", false);
     setTimeout(connect, Math.min(250 * 2 ** retry++, 2000));
@@ -138,6 +140,7 @@ pad.addEventListener("pointermove", (e) => {
     lastX = e.clientX;
     lastY = e.clientY;
   }
+  if (!authed) return; // offline: drop movement so the cursor doesn't jump on reconnect
   pendX += dx * settings.sensitivity;
   pendY += dy * settings.sensitivity;
   flush();
