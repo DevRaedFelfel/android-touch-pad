@@ -23,14 +23,19 @@ from .protocol import PROTOCOL_VERSION, parse_binary
 log = logging.getLogger("touchpad")
 
 MAX_STEP = 4000  # clamp for a single injected movement, in pixels
+MAX_WHEEL = 6000  # clamp for a single wheel/zoom injection (120 = one notch)
 
 
-def _clamp(v: int) -> int:
-    return max(-MAX_STEP, min(MAX_STEP, v))
+def _clamp(v: int, limit: int = MAX_STEP) -> int:
+    return max(-limit, min(limit, v))
 
 
 class InputController:
-    """Ordered, coalescing queue between the socket handler and the injector."""
+    """Ordered, coalescing queue between the socket handler and the injector.
+
+    Consecutive moves (or scrolls, or zooms) are summed into one op; any other op
+    (button, key) is a barrier, so ordering relative to movement is preserved.
+    """
 
     def __init__(self, injector) -> None:
         self.injector = injector
@@ -39,26 +44,70 @@ class InputController:
         self.packets = 0  # movement packets received
         self.flushes = 0  # times the injector drained the queue
 
+    def _add_summed(self, kind: str, a: int, b: int) -> None:
+        ops = self._ops
+        if ops and ops[-1][0] == kind:
+            last = ops[-1]
+            last[1] += a
+            last[2] += b
+        else:
+            ops.append([kind, a, b])
+        self._wake.set()
+
     def move(self, dx: int, dy: int) -> None:
         self.packets += 1
-        ops = self._ops
-        if ops and ops[-1][0] == "move":
-            last = ops[-1]
-            last[1] += dx
-            last[2] += dy
-        else:
-            ops.append(["move", dx, dy])
+        self._add_summed("move", dx, dy)
+
+    def scroll(self, dx: int, dy: int) -> None:
+        self._add_summed("scroll", dx, dy)
+
+    def zoom(self, delta: int) -> None:
+        self._add_summed("zoom", delta, 0)
+
+    def button(self, button: int, state: int) -> None:
+        self._ops.append(["button", button, state])
         self._wake.set()
+
+    def key(self, vk: int, state: int) -> None:
+        self._ops.append(["key", vk, state])
+        self._wake.set()
+
+    def handle(self, parsed: tuple) -> None:
+        """Route a message from protocol.parse_binary."""
+        kind = parsed[0]
+        if kind == "move":
+            self.move(parsed[2], parsed[3])
+        elif kind == "scroll":
+            self.scroll(parsed[2], parsed[3])
+        elif kind == "button":
+            self.button(parsed[1], parsed[2])
+        elif kind == "key":
+            self.key(parsed[1], parsed[2])
+        elif kind == "zoom":
+            self.zoom(parsed[1])
 
     def take_ops(self) -> list[list]:
         ops, self._ops = self._ops, []
         return ops
 
     def apply(self, op: list) -> None:
-        if op[0] == "move":
+        kind = op[0]
+        if kind == "move":
             dx, dy = _clamp(op[1]), _clamp(op[2])
             if dx or dy:
                 self.injector.move(dx, dy)
+        elif kind == "scroll":
+            dx, dy = _clamp(op[1], MAX_WHEEL), _clamp(op[2], MAX_WHEEL)
+            if dx or dy:
+                self.injector.scroll(dx, dy)
+        elif kind == "zoom":
+            d = _clamp(op[1], MAX_WHEEL)
+            if d:
+                self.injector.zoom(d)
+        elif kind == "button":
+            self.injector.button(op[1], op[2] == 1)
+        elif kind == "key":
+            self.injector.key(op[1], op[2] == 1)
 
     async def run(self) -> None:
         while True:
@@ -72,6 +121,7 @@ class InputController:
                     log.exception("input injection failed")
 
     def release_all(self) -> None:
+        self._ops.clear()  # anything still queued is stale once the client is gone
         self.injector.release_all()
 
 
@@ -153,8 +203,8 @@ async def ws_handler(request: web.Request) -> web.StreamResponse:
         async for msg in ws:
             if msg.type == WSMsgType.BINARY:
                 parsed = parse_binary(msg.data)
-                if parsed is not None and parsed[0] == "move":
-                    ctrl.move(parsed[2], parsed[3])
+                if parsed is not None:
+                    ctrl.handle(parsed)
     finally:
         if state.get("active") is ws:
             state["active"] = None

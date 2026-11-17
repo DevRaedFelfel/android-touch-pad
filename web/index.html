@@ -13,6 +13,23 @@
 <body>
   <div id="status"><span id="dot"></span><span id="state">connecting…</span></div>
   <div id="pad"></div>
+
+  <div id="bar">
+    <button id="btn-left" class="mb" type="button">Left</button>
+    <button id="btn-right" class="mb" type="button">Right</button>
+    <button id="btn-fs" class="tool" type="button" aria-label="Fullscreen">⛶</button>
+    <button id="btn-gear" class="tool" type="button" aria-label="Settings">⚙</button>
+  </div>
+
+  <div id="settings" hidden>
+    <label>Pointer speed <input id="set-sensitivity" type="range" min="0.5" max="4" step="0.1"></label>
+    <label>Scroll speed <input id="set-scrollSpeed" type="range" min="0.5" max="3" step="0.1"></label>
+    <label><input id="set-natural" type="checkbox"> Natural scrolling</label>
+    <label><input id="set-tapToClick" type="checkbox"> Tap to click</label>
+    <label><input id="set-haptics" type="checkbox"> Haptic tick on click</label>
+    <label><input id="set-leftHanded" type="checkbox"> Left-handed buttons</label>
+  </div>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

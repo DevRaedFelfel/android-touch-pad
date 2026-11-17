@@ -28,7 +28,28 @@ python -m agent
 
 Scan the QR code printed in the terminal with the phone camera and open the link in Chrome. Use `--dry-run` to try it without injecting input (works on any OS), `--pair` to pair another phone, `--revoke-all` to forget all phones.
 
-Run the tests with `python -m pytest`.
+## Gestures
+
+| Gesture | Action |
+|---|---|
+| One-finger drag | Move the cursor |
+| Tap | Left click |
+| Tap, then touch again and drag | Drag (left button held); lifting without moving is a double click |
+| Two-finger drag | Scroll (natural scrolling by default; change it in settings) |
+| Two-finger tap | Right click |
+| Three-finger tap | Middle click |
+| Two-finger pinch / spread | Zoom (Ctrl + wheel) |
+| Three-finger swipe up / down | Win+Tab / Win+D |
+| Three-finger swipe left / right | Ctrl+Win+Left / Ctrl+Win+Right |
+
+The **Left** and **Right** buttons at the bottom work while another finger moves the cursor. The gear opens settings (pointer speed, scroll speed, natural scrolling, tap to click, haptics, left-handed buttons).
+
+## Tests
+
+```
+python -m pytest              # agent: protocol, auth, coalescing, injection, end-to-end WebSocket
+node --test tests/gestures.test.mjs   # gesture state machine (Node 20+)
+```
 
 ## License
 

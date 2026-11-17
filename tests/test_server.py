@@ -154,3 +154,77 @@ def test_static_files_are_served_without_cache(tmp_path):
         await srv.close()
 
     run(go())
+
+
+def test_buttons_keys_scroll_zoom_arrive_in_order(tmp_path):
+    from agent.protocol import encode_button, encode_key, encode_scroll, encode_zoom
+
+    async def go():
+        srv, inj, token = await _start(tmp_path)
+        async with aiohttp.ClientSession() as s, s.ws_connect(srv.make_url("/ws")) as ws:
+            await _auth(ws, token)
+            await ws.send_bytes(encode_move(0, 5, 0))
+            await asyncio.sleep(0.02)
+            await ws.send_bytes(encode_button(0, 1))
+            await ws.send_bytes(encode_move(1, 0, 7))
+            await ws.send_bytes(encode_button(0, 0))
+            await ws.send_bytes(encode_scroll(2, 0, -120))
+            await ws.send_bytes(encode_zoom(120))
+            await ws.send_bytes(encode_key(0x5B, 1))
+            await ws.send_bytes(encode_key(0x5B, 0))
+            await asyncio.sleep(0.1)
+        await srv.close()
+        return inj
+
+    inj = run(go())
+    assert list(inj.events) == [
+        ("move", 5, 0),
+        ("button", 0, True),
+        ("move", 0, 7),
+        ("button", 0, False),
+        ("scroll", 0, -120),
+        ("zoom", 120),
+        ("key", 0x5B, True),
+        ("key", 0x5B, False),
+    ]
+
+
+def test_disconnect_releases_held_button_and_key(tmp_path):
+    from agent.protocol import encode_button, encode_key
+
+    async def go():
+        srv, inj, token = await _start(tmp_path)
+        async with aiohttp.ClientSession() as s:
+            ws = await s.ws_connect(srv.make_url("/ws"))
+            await _auth(ws, token)
+            await ws.send_bytes(encode_button(0, 1))
+            await ws.send_bytes(encode_key(0x11, 1))
+            await asyncio.sleep(0.05)
+            assert inj.buttons_down == {0} and inj.keys_down == {0x11}
+            await ws.close()  # e.g. Wi-Fi dropped mid-drag
+            await asyncio.sleep(0.1)
+        await srv.close()
+        return inj
+
+    inj = run(go())
+    assert inj.buttons_down == set() and inj.keys_down == set()
+
+
+def test_replacing_a_client_releases_what_the_old_one_held(tmp_path):
+    from agent.protocol import encode_button
+
+    async def go():
+        srv, inj, token = await _start(tmp_path)
+        async with aiohttp.ClientSession() as s:
+            ws1 = await s.ws_connect(srv.make_url("/ws"))
+            await _auth(ws1, token)
+            await ws1.send_bytes(encode_button(1, 1))
+            await asyncio.sleep(0.05)
+            ws2 = await s.ws_connect(srv.make_url("/ws"))
+            await _auth(ws2, token)
+            await asyncio.sleep(0.05)
+            assert inj.buttons_down == set()
+            await ws2.close()
+        await srv.close()
+
+    run(go())

@@ -12,8 +12,15 @@ PROTOCOL_VERSION = 1
 
 # Client -> agent message types
 T_MOVE = 0x01
+T_SCROLL = 0x02
+T_BUTTON = 0x03
+T_KEY = 0x04
+T_ZOOM = 0x07
 
-_MOVE = struct.Struct("<BHhh")  # type, seq, dx, dy
+_XY = struct.Struct("<BHhh")  # type, seq, dx, dy   (MOVE and SCROLL)
+_BUTTON = struct.Struct("<BBB")  # type, button (0=L 1=R 2=M), state (0=up 1=down)
+_KEY = struct.Struct("<BHB")  # type, Windows virtual-key, state
+_ZOOM = struct.Struct("<Bh")  # type, delta (120 = one wheel notch)
 
 
 def parse_binary(data: bytes) -> tuple | None:
@@ -25,13 +32,49 @@ def parse_binary(data: bytes) -> tuple | None:
     if not data:
         return None
     t = data[0]
-    if t == T_MOVE:
-        if len(data) != _MOVE.size:
+    n = len(data)
+    if t == T_MOVE or t == T_SCROLL:
+        if n != _XY.size:
             return None
-        _, seq, dx, dy = _MOVE.unpack(data)
-        return ("move", seq, dx, dy)
+        _, seq, dx, dy = _XY.unpack(data)
+        return ("move" if t == T_MOVE else "scroll", seq, dx, dy)
+    if t == T_BUTTON:
+        if n != _BUTTON.size:
+            return None
+        _, button, state = _BUTTON.unpack(data)
+        if button > 2 or state > 1:
+            return None
+        return ("button", button, state)
+    if t == T_KEY:
+        if n != _KEY.size:
+            return None
+        _, vk, state = _KEY.unpack(data)
+        if not 1 <= vk <= 254 or state > 1:
+            return None
+        return ("key", vk, state)
+    if t == T_ZOOM:
+        if n != _ZOOM.size:
+            return None
+        _, delta = _ZOOM.unpack(data)
+        return ("zoom", delta)
     return None
 
 
 def encode_move(seq: int, dx: int, dy: int) -> bytes:
-    return _MOVE.pack(T_MOVE, seq & 0xFFFF, dx, dy)
+    return _XY.pack(T_MOVE, seq & 0xFFFF, dx, dy)
+
+
+def encode_scroll(seq: int, dx: int, dy: int) -> bytes:
+    return _XY.pack(T_SCROLL, seq & 0xFFFF, dx, dy)
+
+
+def encode_button(button: int, state: int) -> bytes:
+    return _BUTTON.pack(T_BUTTON, button, state)
+
+
+def encode_key(vk: int, state: int) -> bytes:
+    return _KEY.pack(T_KEY, vk, state)
+
+
+def encode_zoom(delta: int) -> bytes:
+    return _ZOOM.pack(T_ZOOM, delta)
