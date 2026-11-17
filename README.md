@@ -52,11 +52,24 @@ The **⌨** button opens the special-keys panel and the phone's on-screen keyboa
 
 Known limitation: on-screen keyboards report edits differently (Gboard, Samsung Keyboard, ...). The page mirrors the text field's edits, including autocorrect, but this has only been tested in simulation, not on every keyboard. If typing misbehaves, switch the phone's keyboard or use the special-keys panel.
 
+## Latency
+
+The status strip at the top of the app shows the round-trip time to the laptop (median and 95th percentile of the last 100 pings, e.g. `connected · 8 ms (p95 14)`). Turn it off in settings. One-way delay is roughly half the round trip.
+
+To measure the agent alone (no Wi-Fi, no phone), run the simulator, which sends 5,000 MOVE packets at 240 Hz to an agent in dry-run mode:
+
+```
+python -m tools.latency_test                      # fails if server handling p99 > 2 ms
+python -m tools.latency_test --rate 500 --burst 8 # stress: bursts show the move coalescing
+```
+
+It reports server handling time (p50/p95/p99), loopback ping round trip, and how many packets were merged per injector call.
+
 ## Tests
 
 ```
 python -m pytest              # agent: protocol, auth, coalescing, injection, end-to-end WebSocket
-node --test tests/gestures.test.mjs tests/keyboard.test.mjs   # gestures and keyboard logic (Node 20+)
+node --test tests/*.test.mjs  # gestures, keyboard, latency stats, app load smoke test (Node 20+)
 ```
 
 ## License

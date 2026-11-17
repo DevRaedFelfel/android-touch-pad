@@ -1,6 +1,7 @@
 import { createGestures } from "/gestures.js";
 import { MODIFIERS, SENTINEL, VK, charToKey, createEditTracker, namedKeyToVk } from "/keyboard.js";
-import { packButton, packKey, packMove, packScroll, packText, packZoom } from "/protocol.js";
+import { createLatencyStats, formatStatus } from "/latency.js";
+import { packButton, packKey, packMove, packPing, packScroll, packText, packZoom, parsePong } from "/protocol.js";
 
 const EDGE = 28; // ignore touches starting this close to the left/right edge
 const MAX_BUFFERED = 4096; // back-pressure threshold, bytes
@@ -22,6 +23,7 @@ const settings = {
   tapToClick: true,
   haptics: true,
   leftHanded: false,
+  showLatency: true,
 };
 
 function loadSettings() {
@@ -51,6 +53,7 @@ function bindSettings() {
       settings[key] = isCheck ? el.checked : parseFloat(el.value);
       saveSettings();
       applySettings();
+      renderStatus();
     });
   }
   applySettings();
@@ -85,9 +88,41 @@ let authed = false;
 let retry = 0;
 let fatal = false;
 
+const latency = createLatencyStats(100);
+let baseState = "connecting…";
+
+function renderStatus() {
+  stateEl.textContent = formatStatus(baseState, latency, settings.showLatency && authed);
+}
+
 function setState(text, on) {
-  stateEl.textContent = text;
+  baseState = text;
   dot.classList.toggle("on", !!on);
+  renderStatus();
+}
+
+// Round-trip time: one ping per second; the agent echoes the token straight back.
+const pingSent = new Map(); // token -> performance.now() when sent
+let pingTimer = 0;
+let pingToken = 0;
+
+function startPinging() {
+  stopPinging();
+  const ping = () => {
+    if (!authed || ws.readyState !== 1) return;
+    const token = pingToken++;
+    pingSent.set(token, performance.now());
+    if (pingSent.size > 8) pingSent.delete(pingSent.keys().next().value); // lost pongs
+    ws.send(packPing(token));
+  };
+  ping();
+  pingTimer = setInterval(ping, 1000);
+}
+
+function stopPinging() {
+  clearInterval(pingTimer);
+  pingTimer = 0;
+  pingSent.clear();
 }
 
 function connect() {
@@ -105,12 +140,23 @@ function connect() {
 
   ws.onopen = () => ws.send(JSON.stringify({ t: "auth", token, v: 1 }));
   ws.onmessage = (ev) => {
-    if (typeof ev.data !== "string") return;
+    if (typeof ev.data !== "string") {
+      const token = parsePong(ev.data);
+      const t0 = token === null ? undefined : pingSent.get(token);
+      if (t0 !== undefined) {
+        pingSent.delete(token);
+        latency.add(performance.now() - t0);
+        renderStatus();
+      }
+      return;
+    }
     const msg = JSON.parse(ev.data);
     if (msg.t === "ok") {
       authed = true;
       retry = 0;
+      latency.clear();
       setState("connected", true);
+      startPinging();
     } else if (msg.t === "err") {
       if (msg.reason === "bad_token" || msg.reason === "bad_version") {
         fatal = true;
@@ -120,6 +166,8 @@ function connect() {
   };
   ws.onclose = () => {
     authed = false;
+    stopPinging();
+    latency.clear();
     moveAcc.x = moveAcc.y = scrollAcc.x = scrollAcc.y = zoomAcc.x = 0;
     gestures.reset();
     releaseBarButtons();

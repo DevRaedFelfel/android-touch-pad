@@ -12,13 +12,14 @@ import contextlib
 import json
 import logging
 import socket
+import time
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
 from .auth import RateLimiter, TokenStore
 from .netinfo import is_allowed_ip
-from .protocol import PROTOCOL_VERSION, parse_binary
+from .protocol import PROTOCOL_VERSION, encode_pong, parse_binary
 
 log = logging.getLogger("touchpad")
 
@@ -37,12 +38,16 @@ class InputController:
     (button, key) is a barrier, so ordering relative to movement is preserved.
     """
 
-    def __init__(self, injector) -> None:
+    def __init__(self, injector, samples: list[int] | None = None) -> None:
         self.injector = injector
         self._ops: list[list] = []
         self._wake = asyncio.Event()
         self.packets = 0  # movement packets received
         self.flushes = 0  # times the injector drained the queue
+        # Optional probe (used by tools/latency_test.py): when a list is given, the
+        # nanoseconds between each move packet's arrival and its injection are appended.
+        self.samples = samples
+        self._arrivals: list[int] = []
 
     def _add_summed(self, kind: str, a: int, b: int) -> None:
         ops = self._ops
@@ -56,6 +61,8 @@ class InputController:
 
     def move(self, dx: int, dy: int) -> None:
         self.packets += 1
+        if self.samples is not None:
+            self._arrivals.append(time.perf_counter_ns())
         self._add_summed("move", dx, dy)
 
     def scroll(self, dx: int, dy: int) -> None:
@@ -122,14 +129,20 @@ class InputController:
             await self._wake.wait()
             self._wake.clear()
             self.flushes += 1
-            for op in self.take_ops():
+            ops = self.take_ops()
+            arrivals, self._arrivals = self._arrivals, []
+            for op in ops:
                 try:
                     self.apply(op)
                 except Exception:  # keep the injector alive whatever happens
                     log.exception("input injection failed")
+            if arrivals:
+                done = time.perf_counter_ns()
+                self.samples.extend(done - a for a in arrivals)
 
     def release_all(self) -> None:
         self._ops.clear()  # anything still queued is stale once the client is gone
+        self._arrivals.clear()
         self.injector.release_all()
 
 
@@ -212,7 +225,10 @@ async def ws_handler(request: web.Request) -> web.StreamResponse:
             if msg.type == WSMsgType.BINARY:
                 parsed = parse_binary(msg.data)
                 if parsed is not None:
-                    ctrl.handle(parsed)
+                    if parsed[0] == "ping":
+                        await ws.send_bytes(encode_pong(parsed[1]))  # answered right here
+                    else:
+                        ctrl.handle(parsed)
     finally:
         if state.get("active") is ws:
             state["active"] = None
