@@ -1,0 +1,42 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0b0d10;
+  color: #9aa4b2;
+  font: 13px/1.4 system-ui, sans-serif;
+  overscroll-behavior: none;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#pad {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+}
+
+#status {
+  position: fixed;
+  top: env(safe-area-inset-top, 0);
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+#dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #c0392b;
+}
+
+#dot.on {
+  background: #2ecc71;
+}
