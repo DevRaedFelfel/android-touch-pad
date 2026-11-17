@@ -1,7 +1,7 @@
 // Pure gesture state machine (SPEC.md section 6.3). No DOM access, no timers:
 // feed it pointer events with timestamps and it calls the `out` callbacks.
 //
-//   out.move(dx, dy)      raw pixel movement (caller applies sensitivity)
+//   out.move(dx, dy, t)   raw pixel movement ending at time t in ms (caller applies sensitivity)
 //   out.scroll(dx, dy)    raw pixel movement of the two-finger centroid
 //   out.zoom(d)           change in distance between two fingers, in pixels
 //   out.button(b, down)   b: 0=left 1=right 2=middle (used for drag)
@@ -101,7 +101,7 @@ export function createGestures(out, getSettings, tuning = TUNING) {
         dx = single.hx;
         dy = single.hy;
       }
-      out.move(dx, dy);
+      out.move(dx, dy, t);
     } else if (multi && ptrs.size === 2) {
       const a = multi.a;
       const b = multi.b;

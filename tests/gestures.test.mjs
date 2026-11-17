@@ -8,9 +8,10 @@ function harness(settings = {}) {
   const log = [];
   const sum = { mx: 0, my: 0, sx: 0, sy: 0, z: 0 };
   const out = {
-    move: (dx, dy) => {
+    move: (dx, dy, t) => {
       sum.mx += dx;
       sum.my += dy;
+      sum.lastT = t;
     },
     scroll: (dx, dy) => {
       sum.sx += dx;
@@ -224,4 +225,13 @@ test("cancel and reset release a held drag button", () => {
   b.g.down(2, 0, 0, 100);
   b.g.reset();
   assert.deepEqual(b.log.slice(-1), [["button", 0, false]]);
+});
+
+test("movement is reported with the time of the event that produced it", () => {
+  const { g, sum } = harness();
+  g.down(1, 0, 0, 0);
+  g.move(1, 20, 0, 123);
+  assert.equal(sum.lastT, 123);
+  g.move(1, 30, 0, 131);
+  assert.equal(sum.lastT, 131);
 });

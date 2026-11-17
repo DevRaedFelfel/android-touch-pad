@@ -1,3 +1,4 @@
+import { createAccel } from "/accel.js";
 import { createGestures } from "/gestures.js";
 import { MODIFIERS, SENTINEL, VK, charToKey, createEditTracker, namedKeyToVk } from "/keyboard.js";
 import { createLatencyStats, formatStatus } from "/latency.js";
@@ -18,6 +19,7 @@ const bar = $("bar");
 // ---------- settings ----------
 const settings = {
   sensitivity: 1.6,
+  accel: 0.5, // acceleration strength 0..1 (0 = linear)
   scrollSpeed: 1,
   natural: true,
   tapToClick: true,
@@ -357,10 +359,11 @@ function haptic() {
 }
 
 const out = {
-  move(dx, dy) {
+  move(dx, dy, t) {
     if (!authed) return; // offline: drop movement so the cursor can't jump on reconnect
-    moveAcc.x += dx * settings.sensitivity;
-    moveAcc.y += dy * settings.sensitivity;
+    const k = settings.sensitivity * accel.gain(dx, dy, t);
+    moveAcc.x += dx * k;
+    moveAcc.y += dy * k;
   },
   scroll(dx, dy) {
     if (!authed) return;
@@ -388,6 +391,7 @@ const out = {
   },
 };
 
+const accel = createAccel(() => settings.accel);
 const gestures = createGestures(out, () => settings);
 
 // ---------- touch input (hot path: no logging, no DOM writes) ----------
@@ -398,6 +402,7 @@ function inEdge(e) {
 pad.addEventListener("pointerdown", (e) => {
   if (inEdge(e)) return;
   pad.setPointerCapture(e.pointerId);
+  accel.reset();
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
 });
 
@@ -414,6 +419,7 @@ pad.addEventListener("pointermove", (e) => {
 });
 
 pad.addEventListener("pointerup", (e) => {
+  accel.reset();
   gestures.up(e.pointerId, e.timeStamp);
   pumpAll();
 });
