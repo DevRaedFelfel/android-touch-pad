@@ -55,6 +55,15 @@ The QR code is only printed the first time (and with `--pair`). After pairing, j
 | Three-finger swipe up / down | Win+Tab / Win+D |
 | Three-finger swipe left / right | Ctrl+Win+Left / Ctrl+Win+Right |
 
+### Portrait and wide layouts
+
+Laptop touchpads are wide; a phone held upright is tall and narrow. The **⟳** button (or *Layout* in the gear panel) switches between:
+
+- **Normal**: the page follows the phone (turn on auto-rotate and it also works held sideways).
+- **Wide, phone turned left** and **Wide, phone turned right**: hold the phone sideways and the whole screen is drawn turned 90 degrees, with the touch axes remapped, so dragging along the long side moves the cursor left and right. Use these if auto-rotate is locked, or to pick which way you turn the phone.
+
+Tap **⟳** to cycle through the three. The switch happens on the phone only, so the connection stays up and nothing is re-paired. A touch in progress is cancelled when you switch. The choice is remembered.
+
 ### Pointer acceleration
 
 The cursor speed depends on how fast your finger moves, like a laptop touchpad: slow movements are slightly damped for precise aiming, normal movements feel 1:1, and quick flicks travel much farther.
@@ -67,7 +76,7 @@ To tune it, set Pointer speed so normal movement feels right, then raise Acceler
 
 The curve is a smooth function of finger speed (`web/accel.js`); it does not affect scrolling or pinch zoom.
 
-The **Left** and **Right** buttons at the bottom work while another finger moves the cursor. The gear opens settings: pointer speed, scroll speed, natural scrolling, tap to click, haptic tick, left-handed buttons, and the latency display. Touches within 28 px of the left and right screen edges are ignored so Android's back gesture doesn't interfere.
+The **Left** and **Right** buttons at the bottom work while another finger moves the cursor. The gear opens settings: layout, pointer speed, scroll speed, natural scrolling, tap to click, haptic tick, left-handed buttons, and the latency display. Touches within 28 px of the left and right screen edges are ignored so Android's back gesture doesn't interfere.
 
 ## Keyboard
 
@@ -147,6 +156,7 @@ The real `SendInput` calls only run on Windows; on other systems the tests exerc
 
 - **Web app instead of a native app**, so there is nothing to install on the phone and no Android SDK on the laptop. The cost is a few milliseconds of browser overhead and no Bluetooth (a browser cannot act as a Bluetooth mouse).
 - **WebSocket (TCP), not WebRTC/UDP.** Simpler and reliable; back-pressure handling avoids lag build-up. A WebRTC unreliable channel (SPEC milestone M6) is only worth adding if measurements on real hardware show Wi-Fi jitter is a problem.
+- **The layout switch rotates the UI with CSS and remaps touch points in the browser** (`web/layout.js`) rather than locking the screen orientation, because orientation lock needs fullscreen and is not available in every browser. The agent is unaware of it. In wide layouts the phone's safe-area insets are not applied.
 - **Acceleration runs on the phone**, per touch event, so it adds no network or agent delay; the curve depends on smoothed finger speed, not on Windows' own acceleration.
 - **Tap dead zone is 6 px** rather than 8 px (SPEC), to shorten the delay before movement starts.
 - **KEY messages arrived in M2** (not M3) because the three-finger swipes send shortcuts.

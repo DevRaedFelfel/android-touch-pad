@@ -1,6 +1,7 @@
 import { createAccel } from "/accel.js";
 import { createGestures } from "/gestures.js";
 import { MODIFIERS, SENTINEL, VK, charToKey, createEditTracker, namedKeyToVk } from "/keyboard.js";
+import { isLayout, mapPoint, nextLayout } from "/layout.js";
 import { createLatencyStats, formatStatus } from "/latency.js";
 import { packButton, packKey, packMove, packPing, packScroll, packText, packZoom, parsePong } from "/protocol.js";
 
@@ -15,6 +16,7 @@ const pad = $("pad");
 const dot = $("dot");
 const stateEl = $("state");
 const bar = $("bar");
+const appEl = $("app");
 
 // ---------- settings ----------
 const settings = {
@@ -25,6 +27,7 @@ const settings = {
   tapToClick: true,
   haptics: true,
   leftHanded: false,
+  layout: "normal", // normal | wide-left | wide-right (see layout.js)
   showLatency: true,
 };
 
@@ -49,24 +52,37 @@ function bindSettings() {
     const el = $("set-" + key);
     if (!el) continue;
     const isCheck = el.type === "checkbox";
+    const isText = el.tagName === "SELECT";
     if (isCheck) el.checked = settings[key];
     else el.value = settings[key];
-    el.addEventListener("input", () => {
-      settings[key] = isCheck ? el.checked : parseFloat(el.value);
+    const onChange = () => {
+      settings[key] = isCheck ? el.checked : isText ? el.value : parseFloat(el.value);
       saveSettings();
       applySettings();
       renderStatus();
-    });
+    };
+    el.addEventListener("input", onChange);
+    el.addEventListener("change", onChange); // <select> fires change in every browser
   }
   applySettings();
 }
 
+let appliedLayout = "normal";
+
 function applySettings() {
   bar.classList.toggle("left-handed", settings.leftHanded);
+  if (!isLayout(settings.layout)) settings.layout = "normal"; // corrupt saved value
+  if (settings.layout !== appliedLayout) {
+    // The axes just changed under any finger that is down: drop the half-finished gesture
+    // so its next move can't be measured across two coordinate systems.
+    appliedLayout = settings.layout;
+    gestures.reset();
+    accel.reset();
+    for (const l of ["wide-left", "wide-right"]) appEl.classList.toggle(l, l === appliedLayout);
+    const sel = $("set-layout");
+    if (sel.value !== appliedLayout) sel.value = appliedLayout;
+  }
 }
-
-loadSettings();
-bindSettings();
 
 // ---------- pairing token ----------
 function loadToken() {
@@ -394,26 +410,39 @@ const out = {
 const accel = createAccel(() => settings.accel);
 const gestures = createGestures(out, () => settings);
 
+// Settings are loaded here, after accel and gestures exist, because applying a saved
+// layout resets them.
+loadSettings();
+bindSettings();
+
 // ---------- touch input (hot path: no logging, no DOM writes) ----------
 function inEdge(e) {
   return e.clientX < EDGE || e.clientX > innerWidth - EDGE;
+}
+
+/** Screen point -> the (possibly rotated) pad's own coordinates. */
+function pt(x, y) {
+  return mapPoint(settings.layout, x, y, innerWidth, innerHeight);
 }
 
 pad.addEventListener("pointerdown", (e) => {
   if (inEdge(e)) return;
   pad.setPointerCapture(e.pointerId);
   accel.reset();
-  gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+  const p = pt(e.clientX, e.clientY);
+  gestures.down(e.pointerId, p.x, p.y, e.timeStamp);
 });
 
 pad.addEventListener("pointermove", (e) => {
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
   if (evs && evs.length) {
     for (let i = 0; i < evs.length; i++) {
-      gestures.move(e.pointerId, evs[i].clientX, evs[i].clientY, evs[i].timeStamp);
+      const p = pt(evs[i].clientX, evs[i].clientY);
+      gestures.move(e.pointerId, p.x, p.y, evs[i].timeStamp);
     }
   } else {
-    gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+    const p = pt(e.clientX, e.clientY);
+    gestures.move(e.pointerId, p.x, p.y, e.timeStamp);
   }
   pumpAll();
 });
@@ -587,6 +616,18 @@ $("btn-kb").addEventListener("click", () => {
 });
 
 // ---------- toolbar ----------
+$("btn-layout").addEventListener("click", () => {
+  settings.layout = nextLayout(settings.layout);
+  saveSettings();
+  applySettings();
+  showToast(
+    settings.layout === "normal"
+      ? "Layout: normal"
+      : "Layout: wide. Turn the phone " + (settings.layout === "wide-left" ? "left" : "right") + ".",
+    2200,
+  );
+});
+
 $("btn-gear").addEventListener("click", () => {
   const panel = $("settings");
   panel.hidden = !panel.hidden;

@@ -9,9 +9,18 @@ const WEB = path.resolve(import.meta.dirname, "..", "..", "web");
 let loadCount = 0;
 
 function stubElement() {
+  const classes = new Set();
   return {
-    addEventListener() {},
-    classList: { toggle() {}, add() {}, remove() {} },
+    listeners: {},
+    addEventListener(type, fn) {
+      this.listeners[type] = fn; // last one wins; enough for the handlers tests need to fire
+    },
+    classes,
+    classList: {
+      toggle: (c, on) => (on === undefined ? !classes.delete(c) && classes.add(c) : on ? classes.add(c) : classes.delete(c)),
+      add: (c) => classes.add(c),
+      remove: (c) => classes.delete(c),
+    },
     setPointerCapture() {},
     querySelectorAll: () => [],
     appendChild() {},

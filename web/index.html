@@ -11,12 +11,14 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<div id="app">
   <div id="status"><span id="dot"></span><span id="state">connecting…</span></div>
   <div id="pad"></div>
 
   <div id="bar">
     <button id="btn-left" class="mb" type="button">Left</button>
     <button id="btn-right" class="mb" type="button">Right</button>
+    <button id="btn-layout" class="tool" type="button" aria-label="Switch layout">⟳</button>
     <button id="btn-kb" class="tool" type="button" aria-label="Keyboard">⌨</button>
     <button id="btn-fs" class="tool" type="button" aria-label="Fullscreen">⛶</button>
     <button id="btn-gear" class="tool" type="button" aria-label="Settings">⚙</button>
@@ -55,6 +57,13 @@
   <div id="toast" hidden></div>
 
   <div id="settings" hidden>
+    <label>Layout
+      <select id="set-layout">
+        <option value="normal">Normal</option>
+        <option value="wide-left">Wide, phone turned left</option>
+        <option value="wide-right">Wide, phone turned right</option>
+      </select>
+    </label>
     <label>Pointer speed <input id="set-sensitivity" type="range" min="0.5" max="4" step="0.1"></label>
     <label>Acceleration <input id="set-accel" type="range" min="0" max="1" step="0.05"></label>
     <label>Scroll speed <input id="set-scrollSpeed" type="range" min="0.5" max="3" step="0.1"></label>
@@ -65,6 +74,7 @@
     <label><input id="set-showLatency" type="checkbox"> Show latency</label>
   </div>
 
+</div>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
