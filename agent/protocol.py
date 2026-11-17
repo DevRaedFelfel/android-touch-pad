@@ -15,7 +15,10 @@ T_MOVE = 0x01
 T_SCROLL = 0x02
 T_BUTTON = 0x03
 T_KEY = 0x04
+T_TEXT = 0x05
 T_ZOOM = 0x07
+
+MAX_TEXT_BYTES = 4096  # per TEXT frame, UTF-8
 
 _XY = struct.Struct("<BHhh")  # type, seq, dx, dy   (MOVE and SCROLL)
 _BUTTON = struct.Struct("<BBB")  # type, button (0=L 1=R 2=M), state (0=up 1=down)
@@ -52,6 +55,13 @@ def parse_binary(data: bytes) -> tuple | None:
         if not 1 <= vk <= 254 or state > 1:
             return None
         return ("key", vk, state)
+    if t == T_TEXT:
+        if n < 2 or n - 1 > MAX_TEXT_BYTES:
+            return None
+        try:
+            return ("text", data[1:].decode("utf-8"))
+        except UnicodeDecodeError:
+            return None
     if t == T_ZOOM:
         if n != _ZOOM.size:
             return None
@@ -74,6 +84,10 @@ def encode_button(button: int, state: int) -> bytes:
 
 def encode_key(vk: int, state: int) -> bytes:
     return _KEY.pack(T_KEY, vk, state)
+
+
+def encode_text(text: str) -> bytes:
+    return bytes([T_TEXT]) + text.encode("utf-8")
 
 
 def encode_zoom(delta: int) -> bytes:

@@ -228,3 +228,22 @@ def test_replacing_a_client_releases_what_the_old_one_held(tmp_path):
         await srv.close()
 
     run(go())
+
+
+def test_text_frames_are_typed_in_order_with_other_input(tmp_path):
+    from agent.protocol import encode_key, encode_text
+
+    async def go():
+        srv, inj, token = await _start(tmp_path)
+        async with aiohttp.ClientSession() as s, s.ws_connect(srv.make_url("/ws")) as ws:
+            await _auth(ws, token)
+            await ws.send_bytes(encode_text("héllo"))
+            await ws.send_bytes(encode_key(0x0D, 1))
+            await ws.send_bytes(encode_key(0x0D, 0))
+            await ws.send_bytes(b"\x05\xff")  # invalid UTF-8: ignored
+            await asyncio.sleep(0.1)
+        await srv.close()
+        return inj
+
+    inj = run(go())
+    assert list(inj.events) == [("text", "héllo"), ("key", 0x0D, True), ("key", 0x0D, False)]

@@ -6,6 +6,7 @@ export const T_MOVE = 0x01;
 export const T_SCROLL = 0x02;
 export const T_BUTTON = 0x03;
 export const T_KEY = 0x04;
+export const T_TEXT = 0x05;
 export const T_ZOOM = 0x07;
 
 const moveBuf = new ArrayBuffer(7);
@@ -61,4 +62,34 @@ export function packKey(vk, state) {
   v.setUint16(1, vk, true);
   v.setUint8(3, state);
   return buf;
+}
+
+const encoder = new TextEncoder();
+const MAX_TEXT_BYTES = 4096;
+
+/** Text to type, as UTF-8. Long strings are split on character boundaries. Returns an array of buffers. */
+export function packText(text) {
+  const out = [];
+  let chunk = "";
+  let bytes = 0;
+  for (const ch of text) {
+    const n = encoder.encode(ch).length;
+    if (bytes + n > MAX_TEXT_BYTES) {
+      out.push(frame(chunk));
+      chunk = "";
+      bytes = 0;
+    }
+    chunk += ch;
+    bytes += n;
+  }
+  if (chunk) out.push(frame(chunk));
+  return out;
+}
+
+function frame(str) {
+  const body = encoder.encode(str);
+  const buf = new Uint8Array(1 + body.length);
+  buf[0] = T_TEXT;
+  buf.set(body, 1);
+  return buf.buffer;
 }

@@ -110,3 +110,14 @@ def test_release_all_drops_queue_and_releases_held_input():
     assert ctrl.take_ops() == []
     assert inj.buttons_down == set() and inj.keys_down == set()
     assert list(inj.events)[-2:] == [("button", 0, False), ("key", 0x5B, False)]
+
+
+def test_text_is_an_ordered_barrier_and_reaches_the_injector():
+    inj = DryRunInjector()
+    ctrl = InputController(inj)
+    ctrl.move(1, 1)
+    ctrl.text("hi")
+    ctrl.move(2, 2)
+    assert ctrl.take_ops() == [["move", 1, 1], ["text", "hi"], ["move", 2, 2]]
+    ctrl.apply(["text", "hi"])
+    assert list(inj.events) == [("text", "hi")]

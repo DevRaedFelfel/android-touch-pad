@@ -1,5 +1,6 @@
 import { createGestures } from "/gestures.js";
-import { packButton, packKey, packMove, packScroll, packZoom } from "/protocol.js";
+import { MODIFIERS, SENTINEL, VK, charToKey, createEditTracker, namedKeyToVk } from "/keyboard.js";
+import { packButton, packKey, packMove, packScroll, packText, packZoom } from "/protocol.js";
 
 const EDGE = 28; // ignore touches starting this close to the left/right edge
 const MAX_BUFFERED = 4096; // back-pressure threshold, bytes
@@ -122,6 +123,7 @@ function connect() {
     moveAcc.x = moveAcc.y = scrollAcc.x = scrollAcc.y = zoomAcc.x = 0;
     gestures.reset();
     releaseBarButtons();
+    dropMods();
     if (fatal) return;
     setState("reconnecting…", false);
     setTimeout(connect, Math.min(250 * 2 ** retry++, 2000));
@@ -286,6 +288,166 @@ pad.addEventListener("pointerup", (e) => {
 });
 pad.addEventListener("pointercancel", (e) => gestures.cancel(e.pointerId));
 pad.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// ---------- keyboard ----------
+const kbin = $("kbin");
+const keysPanel = $("keys");
+const heldMods = new Map(); // sticky modifier vk -> its button element
+
+function key(vk, down) {
+  sendReliable(packKey(vk, down ? 1 : 0));
+}
+
+/** Release all latched modifiers (they apply to one key, like Android sticky keys). */
+function releaseMods() {
+  for (const [vk, el] of heldMods) {
+    key(vk, false);
+    el.classList.remove("down");
+  }
+  heldMods.clear();
+}
+
+/** Forget latched modifiers without sending anything (the agent releases them on disconnect). */
+function dropMods() {
+  for (const [, el] of heldMods) el.classList.remove("down");
+  heldMods.clear();
+}
+
+function toggleMod(vk, el) {
+  if (heldMods.has(vk)) {
+    heldMods.delete(vk);
+    el.classList.remove("down");
+    key(vk, false);
+  } else {
+    heldMods.set(vk, el);
+    el.classList.add("down");
+    key(vk, true);
+  }
+}
+
+function tapKey(vk, withShift = false) {
+  const addShift = withShift && !heldMods.has(VK.SHIFT);
+  if (addShift) key(VK.SHIFT, true);
+  key(vk, true);
+  key(vk, false);
+  if (addShift) key(VK.SHIFT, false);
+  releaseMods();
+}
+
+function typeText(text) {
+  const chars = Array.from(text);
+  let i = 0;
+  // While a modifier is latched, letters and digits go out as real key presses so
+  // Ctrl+C, Alt+F4 and similar shortcuts work; Unicode injection would not trigger them.
+  while (i < chars.length && heldMods.size) {
+    const ch = chars[i++];
+    const k = charToKey(ch);
+    if (k) {
+      tapKey(k.vk, k.shift);
+    } else {
+      for (const buf of packText(ch)) sendReliable(buf);
+      releaseMods();
+    }
+  }
+  if (i < chars.length) {
+    for (const buf of packText(chars.slice(i).join(""))) sendReliable(buf);
+  }
+}
+
+const tracker = createEditTracker();
+let composing = false;
+
+function resetInput() {
+  kbin.value = SENTINEL;
+  kbin.setSelectionRange(SENTINEL.length, SENTINEL.length);
+  tracker.reset();
+}
+
+function processInput(e) {
+  const r = tracker.update(kbin.value, composing || !!(e && e.isComposing));
+  for (let i = 0; i < r.backspaces; i++) tapKey(VK.BACK);
+  if (r.text) typeText(r.text);
+  if (r.reset) resetInput();
+}
+
+kbin.addEventListener("compositionstart", () => {
+  composing = true;
+});
+kbin.addEventListener("compositionend", () => {
+  composing = false;
+  processInput();
+});
+kbin.addEventListener("input", processInput);
+kbin.addEventListener("beforeinput", (e) => {
+  if (e.inputType === "insertLineBreak") {
+    e.preventDefault();
+    tapKey(VK.ENTER);
+  }
+});
+kbin.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.keyCode === 229) return; // soft keyboard: handled via input events
+  const vk = namedKeyToVk(e.key);
+  if (vk !== null) {
+    e.preventDefault();
+    tapKey(vk);
+  }
+});
+
+function wireKey(el, vk, repeat) {
+  let delay = 0;
+  let timer = 0;
+  const stop = () => {
+    clearTimeout(delay);
+    clearInterval(timer);
+    delay = timer = 0;
+  };
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); // keep focus (and the soft keyboard) where it is
+    el.setPointerCapture(e.pointerId);
+    tapKey(vk);
+    if (repeat) {
+      delay = setTimeout(() => {
+        timer = setInterval(() => tapKey(vk), 45);
+      }, 400);
+    }
+  });
+  el.addEventListener("pointerup", stop);
+  el.addEventListener("pointercancel", stop);
+}
+
+for (const el of keysPanel.querySelectorAll("button[data-vk]")) {
+  wireKey(el, parseInt(el.dataset.vk, 10), "repeat" in el.dataset);
+}
+for (const el of keysPanel.querySelectorAll("button[data-mod]")) {
+  const vk = parseInt(el.dataset.mod, 10);
+  if (!MODIFIERS.includes(vk)) continue;
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    toggleMod(vk, el);
+  });
+}
+const fkeys = $("fkeys");
+for (let i = 0; i < 12; i++) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = "F" + (i + 1);
+  wireKey(b, VK.F1 + i, false);
+  fkeys.appendChild(b);
+}
+$("btn-fkeys").addEventListener("click", () => {
+  fkeys.hidden = !fkeys.hidden;
+});
+
+$("btn-kb").addEventListener("click", () => {
+  if (keysPanel.hidden) {
+    keysPanel.hidden = false;
+    resetInput();
+    kbin.focus();
+  } else {
+    keysPanel.hidden = true;
+    kbin.blur();
+  }
+});
 
 // ---------- toolbar ----------
 $("btn-gear").addEventListener("click", () => {
