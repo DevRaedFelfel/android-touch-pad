@@ -31,6 +31,7 @@ def _print_qr(url: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m agent", description=__doc__)
     p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--https", action="store_true", help="serve HTTPS with a self-signed certificate")
     p.add_argument("--dry-run", action="store_true", help="do not inject input")
     p.add_argument("--pair", action="store_true", help="create a new pairing token")
     p.add_argument("--revoke-all", action="store_true", help="forget all paired phones")
@@ -66,10 +67,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         ip = "127.0.0.1"
 
+    ssl_context = None
+    if args.https:
+        from .tls import ensure_cert, make_ssl_context
+
+        cert, key = ensure_cert(cfg_dir, [ip, *private_ips()])
+        ssl_context = make_ssl_context(cert, key)
+
     injector = make_injector(args.dry_run)
     app = create_app(injector, tokens, WEB_DIR)
 
-    base = f"http://{ip}:{args.port}/"
+    scheme = "https" if ssl_context else "http"
+    base = f"{scheme}://{ip}:{args.port}/"
     print(f"Phone Touchpad agent {__version__}" + ("  [DRY RUN]" if args.dry_run else ""))
     if new_token:
         url = f"{base}?t={new_token}"
@@ -79,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"\nPhone already paired. Open {base} on the phone.")
         print("Use --pair to pair another phone.\n")
+    if ssl_context:
+        print("HTTPS: the phone warns about the certificate the first time. Tap Advanced, then Proceed.")
+    if sys.platform == "win32":
+        print("If the phone cannot connect, allow the port in Windows Firewall: see scripts\\allow-firewall.ps1")
     others = [a for a in private_ips() if a != ip]
     if others:
         print("Other addresses: " + ", ".join(others))
@@ -86,7 +99,9 @@ def main(argv: list[str] | None = None) -> int:
 
     tune_process()
     try:
-        web.run_app(app, host="0.0.0.0", port=args.port, print=None, access_log=None)
+        web.run_app(
+            app, host="0.0.0.0", port=args.port, ssl_context=ssl_context, print=None, access_log=None
+        )
     except OSError as e:
         print(f"Cannot listen on port {args.port}: {e}. Try --port <other>.", file=sys.stderr)
         return 1

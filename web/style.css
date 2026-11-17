@@ -190,3 +190,21 @@ html, body {
 #keys #fkeys button {
   flex: 0 0 calc(16.666% - 5px);
 }
+
+#toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  top: calc(env(safe-area-inset-top, 0px) + 34px);
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: #cfd6df;
+  z-index: 5;
+  pointer-events: none;
+}
+
+#toast[hidden] {
+  display: none;
+}

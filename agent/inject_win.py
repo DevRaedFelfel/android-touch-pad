@@ -10,9 +10,12 @@ every platform; that lets the layout be unit-tested off Windows.
 from __future__ import annotations
 
 import ctypes
+import logging
 import struct
 import sys
 from collections import deque
+
+log = logging.getLogger("touchpad")
 
 INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
@@ -152,10 +155,22 @@ class WindowsInjector:
         self._size = ctypes.sizeof(INPUT)
         self._buttons_down: set[int] = set()
         self._keys_down: set[int] = set()
+        self._warned = False
+
+    def _check(self, sent: int, expected: int) -> None:
+        """SendInput returns how many events were injected; fewer means Windows blocked it."""
+        if sent < expected and not self._warned:
+            self._warned = True
+            log.warning(
+                "Windows blocked injected input (%d of %d events). This happens over an "
+                "elevated window or a UAC prompt. Run the agent as administrator to control those.",
+                sent,
+                expected,
+            )
 
     def _send(self, *inputs: INPUT) -> None:
         arr = (INPUT * len(inputs))(*inputs)
-        self._user32.SendInput(len(inputs), arr, self._size)
+        self._check(self._user32.SendInput(len(inputs), arr, self._size), len(inputs))
 
     @staticmethod
     def _mouse(flags: int, data: int = 0) -> INPUT:
@@ -181,7 +196,7 @@ class WindowsInjector:
         mi = self._move.mi
         mi.dx = dx
         mi.dy = dy
-        self._user32.SendInput(1, ctypes.byref(self._move), self._size)
+        self._check(self._user32.SendInput(1, ctypes.byref(self._move), self._size), 1)
 
     def scroll(self, dx: int, dy: int) -> None:
         inputs = []
