@@ -15,7 +15,7 @@ The full design is in [SPEC.md](SPEC.md).
 
 ## Requirements
 
-- Windows laptop with Python 3.11 or newer
+- Windows laptop with Python 3.11 or newer, **or** the C# tray app (below), which needs nothing installed
 - Android phone with Chrome, on the same Wi-Fi network as the laptop (5 GHz recommended)
 
 ## Quick start
@@ -30,6 +30,14 @@ python -m agent
 3. Move your finger on the screen. The first time, Windows Firewall may ask whether to allow Python: allow **Private networks** only (see [Troubleshooting](#troubleshooting)).
 
 The QR code is only printed the first time (and with `--pair`). After pairing, just open the shortcut.
+
+### Or: the C# tray app
+
+`windows/` holds a second agent, a native Windows tray application written in C#. It speaks the same protocol, serves the same phone client, and uses the same pairing file, so the phone cannot tell the two apart. Use whichever you prefer, **one at a time** (both default to port 8765).
+
+- No Python and no console window: a green icon in the notification area. Right-click it for *Pair a phone* (opens a QR code in your browser), *Forget all phones*, *Use HTTPS*, *Start with Windows*, *Allow in Windows Firewall*, and *Quit*. A balloon tells you when a phone connects.
+- One self-contained `PhoneTouchpad.exe` (the phone client is built in). You do not need the .NET SDK: every push builds the exe on GitHub (Actions tab, workflow *Windows agent*, artifact `PhoneTouchpad-win-x64`). To build it yourself, see [windows/README.md](windows/README.md).
+- Same options on the command line: `--port N`, `--https`, `--dry-run`, `--web-dir PATH`, `--revoke-all`.
 
 ### Agent options
 
@@ -157,6 +165,7 @@ The real `SendInput` calls only run on Windows; on other systems the tests exerc
 - **Web app instead of a native app**, so there is nothing to install on the phone and no Android SDK on the laptop. The cost is a few milliseconds of browser overhead and no Bluetooth (a browser cannot act as a Bluetooth mouse).
 - **WebSocket (TCP), not WebRTC/UDP.** Simpler and reliable; back-pressure handling avoids lag build-up. A WebRTC unreliable channel (SPEC milestone M6) is only worth adding if measurements on real hardware show Wi-Fi jitter is a problem.
 - **The layout switch rotates the UI with CSS and remaps touch points in the browser** (`web/layout.js`) rather than locking the screen orientation, because orientation lock needs fullscreen and is not available in every browser. The agent is unaware of it. In wide layouts the phone's safe-area insets are not applied.
+- **A second, C# agent sits next to the Python one** (`windows/`) rather than replacing it. The Python agent stays the quickest thing to read, change and run on any OS in `--dry-run`; the C# one is the one to leave running in the tray. They share the wire protocol, the token file (`%APPDATA%\\phone-touchpad\\config.json`) and the web client, and tests on both sides check the same byte-level vectors. The tray icon is plain Win32 through P/Invoke, not WinForms, so the project builds and its tests run on any OS with the .NET 8 SDK.
 - **Acceleration runs on the phone**, per touch event, so it adds no network or agent delay; the curve depends on smoothed finger speed, not on Windows' own acceleration.
 - **Tap dead zone is 6 px** rather than 8 px (SPEC), to shorten the delay before movement starts.
 - **KEY messages arrived in M2** (not M3) because the three-finger swipes send shortcuts.

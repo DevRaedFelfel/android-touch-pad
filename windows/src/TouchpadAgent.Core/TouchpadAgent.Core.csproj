@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The phone web client is compiled into the agent, so the .exe is self-contained. -->
+    <EmbeddedResource Include="..\..\..\web\**\*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\*" LogicalName="assets/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>
