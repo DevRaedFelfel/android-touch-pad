@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pair a phone</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; background: #0b0d10; color: #cfd6df; margin: 0; display: grid; place-items: center; min-height: 100vh; }
+  main { max-width: 420px; padding: 24px; text-align: center; }
+  h1 { font-size: 20px; font-weight: 500; margin: 0 0 8px; }
+  #qr { background: #fff; display: inline-block; padding: 8px; border-radius: 12px; margin: 16px 0; }
+  #qr svg { display: block; }
+  code { display: block; word-break: break-all; background: #161a20; padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+  p { color: #9aa4b2; font-size: 14px; }
+  button { background: #1d232b; color: #cfd6df; border: 1px solid #262c35; border-radius: 10px; padding: 8px 14px; font: inherit; margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pair a phone</h1>
+  <p id="msg">Scan this code with the phone camera, then open the link in Chrome.</p>
+  <div id="qr"></div>
+  <code id="url"></code>
+  <button id="copy" type="button">Copy link</button>
+  <p>This page is only reachable from this laptop. Close it when the phone shows the touchpad.</p>
+</main>
+<script src="/qrcode.js"></script>
+<script>
+  var u = new URLSearchParams(location.search).get("u") || "";
+  if (!/^https?:\/\//.test(u)) {
+    document.getElementById("msg").textContent = "No pairing link given. Use Pair a phone in the tray menu.";
+    document.getElementById("qr").hidden = true;
+    document.getElementById("copy").hidden = true;
+  } else {
+    var qr = qrcode(0, "M");
+    qr.addData(u);
+    qr.make();
+    document.getElementById("qr").innerHTML = qr.createSvgTag(6, 0);
+    document.getElementById("url").textContent = u;
+    document.getElementById("copy").onclick = function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(u);
+    };
+  }
+</script>
+</body>
+</html>

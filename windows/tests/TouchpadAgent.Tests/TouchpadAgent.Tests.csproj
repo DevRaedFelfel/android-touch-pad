@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A plain console runner (no NuGet test packages): `dotnet run` exits non-zero if any test fails. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TouchpadAgent.Core\TouchpadAgent.Core.csproj" />
+    <ProjectReference Include="..\..\src\TouchpadAgent\TouchpadAgent.csproj" />
+  </ItemGroup>
+</Project>

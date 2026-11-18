@@ -1,0 +1,40 @@
+name: Windows agent
+
+on:
+  push:
+    paths: ["windows/**", "web/**", ".github/workflows/windows-agent.yml"]
+  pull_request:
+    paths: ["windows/**", "web/**", ".github/workflows/windows-agent.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Unit and end-to-end tests
+        run: dotnet run --project windows/tests/TouchpadAgent.Tests -c Release
+
+      - name: Publish a single self-contained exe
+        run: >
+          dotnet publish windows/src/TouchpadAgent -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true -o out
+
+      - name: Real SendInput self-test (moves the runner's cursor through the WebSocket)
+        shell: pwsh
+        run: |
+          $p = Start-Process out\PhoneTouchpad.exe -ArgumentList '--self-test' -Wait -PassThru `
+                 -RedirectStandardOutput selftest.out.txt -RedirectStandardError selftest.err.txt
+          Get-Content selftest.out.txt, selftest.err.txt -ErrorAction SilentlyContinue
+          exit $p.ExitCode
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PhoneTouchpad-win-x64
+          path: out/PhoneTouchpad.exe

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>PhoneTouchpad</AssemblyName>
+    <RootNamespace>TouchpadAgent</RootNamespace>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TouchpadAgent.Core\TouchpadAgent.Core.csproj" />
+    <EmbeddedResource Include="Assets\tray.png" LogicalName="tray.png" />
+  </ItemGroup>
+</Project>
