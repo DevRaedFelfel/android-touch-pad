@@ -91,6 +91,7 @@ public static class Program
 
         Kernel32.timeBeginPeriod(1); // finer timers: no 15 ms steps in the injector
         Kernel32.SetPriorityClass(Kernel32.GetCurrentProcess(), 0x00000080); // HIGH_PRIORITY_CLASS
+        PowerTuning.DisableThrottling(); // a tray app has no visible window, so Windows 11 would otherwise throttle it when idle
         try
         {
             using var app = new TrayApp(tokens, injector, cfgDir, settings, webDir);

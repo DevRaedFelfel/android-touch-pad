@@ -21,7 +21,9 @@ const appEl = $("app");
 // ---------- settings ----------
 const settings = {
   sensitivity: 1.6,
-  accel: 0.5, // acceleration strength 0..1 (0 = linear)
+  accelOn: true, // acceleration on/off; off means plain linear movement at any speed
+  accel: 0.5, // acceleration strength 0..1 (used when accelOn)
+  keepAwake: true, // send a tiny ping 7x a second so Wi-Fi power saving can't make the first moves after a pause lag
   scrollSpeed: 1,
   natural: true,
   tapToClick: true,
@@ -71,6 +73,7 @@ let appliedLayout = "normal";
 
 function applySettings() {
   bar.classList.toggle("left-handed", settings.leftHanded);
+  $("set-accel").disabled = !settings.accelOn; // the slider means nothing while acceleration is off
   if (!isLayout(settings.layout)) settings.layout = "normal"; // corrupt saved value
   if (settings.layout !== appliedLayout) {
     // The axes just changed under any finger that is down: drop the half-finished gesture
@@ -122,7 +125,10 @@ function setState(text, on) {
 // Round-trip time: one ping per second; the agent echoes the token straight back.
 const pingSent = new Map(); // token -> performance.now() when sent
 let pingTimer = 0;
+let warmTimer = 0;
 let pingToken = 0;
+const WARM_TOKEN = 0xffffffff; // never matches an entry in pingSent, so its pong is ignored
+const WARM_MS = 150;
 
 const LIVENESS_MS = 2500; // no reply from the agent for this long means the link is dead
 let lastRx = 0;
@@ -146,11 +152,20 @@ function startPinging() {
   };
   ping();
   pingTimer = setInterval(ping, 1000);
+  // Keep-warm traffic. After a pause, a phone's Wi-Fi chip (or the laptop's) can be in power-save,
+  // so the first packets arrive late and in a burst: the cursor stalls, then jumps. Steady small
+  // packets keep both radios awake. Skipped while the page is hidden, where it would only cost battery.
+  warmTimer = setInterval(() => {
+    if (!settings.keepAwake || !authed || ws.readyState !== 1 || document.visibilityState === "hidden") return;
+    ws.send(packPing(WARM_TOKEN));
+  }, WARM_MS);
 }
 
 function stopPinging() {
   clearInterval(pingTimer);
+  clearInterval(warmTimer);
   pingTimer = 0;
+  warmTimer = 0;
   pingSent.clear();
 }
 
@@ -407,7 +422,7 @@ const out = {
   },
 };
 
-const accel = createAccel(() => settings.accel);
+const accel = createAccel(() => (settings.accelOn ? settings.accel : 0));
 const gestures = createGestures(out, () => settings);
 
 // Settings are loaded here, after accel and gestures exist, because applying a saved
