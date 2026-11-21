@@ -265,6 +265,28 @@ class WindowsInjector:
             self.key(vk, False)
 
 
+class _PowerThrottlingState(ctypes.Structure):
+    _fields_ = [("Version", ctypes.c_uint32), ("ControlMask", ctypes.c_uint32), ("StateMask", ctypes.c_uint32)]
+
+
+def disable_power_throttling(kernel32) -> bool:
+    """Tell Windows 10/11 not to throttle this process when it is in the background or idle.
+
+    Without this, an idle agent can be put on efficiency cores and have its 1 ms timer request ignored,
+    so the first moves after a pause arrive late and in a burst (the cursor stalls, then jumps).
+    Returns True if Windows accepted the request (older Windows rejects it; that is fine).
+    """
+    state = _PowerThrottlingState(
+        1,  # PROCESS_POWER_THROTTLING_CURRENT_VERSION
+        0x1 | 0x4,  # control EXECUTION_SPEED and IGNORE_TIMER_RESOLUTION ...
+        0,  # ... and set both to "off" (StateMask 0 = do not throttle)
+    )
+    handle = kernel32.GetCurrentProcess()
+    return bool(
+        kernel32.SetProcessInformation(handle, 4, ctypes.byref(state), ctypes.sizeof(state))  # ProcessPowerThrottling
+    )
+
+
 def tune_process() -> None:
     """Lower timer granularity and raise priority. No-op off Windows."""
     if sys.platform != "win32":
@@ -275,7 +297,9 @@ def tune_process() -> None:
         kernel32.GetCurrentProcess.restype = ctypes.c_void_p
         kernel32.SetPriorityClass.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
         kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), 0x00000080)  # HIGH
-    except OSError:
+        kernel32.SetProcessInformation.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32)
+        disable_power_throttling(kernel32)
+    except (OSError, AttributeError):  # AttributeError: Windows older than 8 has no SetProcessInformation
         pass
 
 

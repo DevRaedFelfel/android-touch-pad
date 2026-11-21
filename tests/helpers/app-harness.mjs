@@ -113,7 +113,12 @@ export async function loadApp({ href = "http://laptop:8765/?t=abc", stored = {} 
   Object.assign(globalThis, {
     document: {
       getElementById: (id) => {
-        if (!elements.has(id)) elements.set(id, stubElement());
+        if (!elements.has(id)) {
+          const el = stubElement();
+          // the settings checkboxes: app.js tells them from sliders by their type
+          if (/^set-(natural|tapToClick|haptics|leftHanded|showLatency|accelOn|keepAwake)$/.test(id)) el.type = "checkbox";
+          elements.set(id, el);
+        }
         return elements.get(id);
       },
       createElement: stubElement,

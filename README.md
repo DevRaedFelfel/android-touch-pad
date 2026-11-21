@@ -76,9 +76,10 @@ Tap **⟳** to cycle through the three. The switch happens on the phone only, so
 
 The cursor speed depends on how fast your finger moves, like a laptop touchpad: slow movements are slightly damped for precise aiming, normal movements feel 1:1, and quick flicks travel much farther.
 
-Two settings (gear icon):
+Settings (gear icon):
 - **Pointer speed** scales everything.
-- **Acceleration** sets the strength of the curve, from 0 to 1 (default 0.5). At 0 there is no acceleration (plain linear movement). At 1 the slowest movements are scaled to 0.6x and flicks to 4x.
+- **Acceleration** (checkbox) turns the curve on or off. Off means plain linear movement: the cursor moves the same distance for the same finger distance, at any speed.
+- **Acceleration strength** (slider, greyed out while the checkbox is off) goes from 0 to 1 (default 0.5). At 0 the movement is linear. At 1 the slowest movements are scaled to 0.6x and flicks to 4x.
 
 To tune it, set Pointer speed so normal movement feels right, then raise Acceleration until a flick crosses the screen but slow aiming still feels precise. On top of this, Windows applies its own pointer settings: for fully predictable movement turn off *Enhance pointer precision* in Windows mouse settings.
 
@@ -119,6 +120,13 @@ This app lets a device on your network type and click on your laptop, so treat t
 - **Stuck keys:** if the phone disconnects or goes silent for 3 seconds, the agent releases any held mouse button or key.
 
 ## Troubleshooting
+
+**The cursor stalls, then jumps, for a few seconds after you pause and start again.** Almost always Wi-Fi or CPU power saving: after a pause a sleeping radio (the phone's or the laptop's) delivers the first packets late and all at once.
+- Leave **Keep link awake** on in the gear panel (the default). It sends a tiny packet about 7 times a second to keep the radios awake, and pauses while the page is hidden.
+- Turn on *Show latency* and compare the `p95` figure just after a pause with the figure when moving steadily. A spike only after pauses points at power saving.
+- On the laptop: Device Manager, your Wi-Fi adapter, *Power Management*, untick *Allow the computer to turn off this device*; and in Windows power settings set Wireless Adapter Settings to *Maximum Performance*. Plugged in is better than battery.
+- Both agents ask Windows not to throttle them when idle (Windows 11 otherwise can park a background program on slow cores).
+- 5 GHz Wi-Fi, or the laptop's own hotspot, is steadier than a busy router.
 
 **The phone can't open the page.**
 - Check both are on the same Wi-Fi. Some routers and guest networks block devices from talking to each other (client or AP isolation); use another network or the laptop's hotspot (below).

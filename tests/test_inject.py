@@ -152,3 +152,30 @@ def test_windows_long_text_is_sent_in_bounded_chunks(win):
     inj.text("x" * 1000)
     assert all(len(call) <= 130 for call in fake.calls)
     assert sum(len(call) for call in fake.calls) == 2000
+
+
+def test_power_throttling_opt_out_asks_windows_not_to_throttle():
+    import ctypes
+
+    from agent import inject_win
+
+    calls = []
+
+    class FakeKernel32:
+        def GetCurrentProcess(self):
+            return 123
+
+        def SetProcessInformation(self, handle, cls, ptr, size):
+            state = ctypes.cast(ptr, ctypes.POINTER(inject_win._PowerThrottlingState)).contents
+            calls.append((handle, cls, state.Version, state.ControlMask, state.StateMask, size))
+            return 1
+
+    assert inject_win.disable_power_throttling(FakeKernel32()) is True
+    # ProcessPowerThrottling (4), version 1, control execution speed + timer resolution, state 0 = not throttled
+    assert calls == [(123, 4, 1, 0x5, 0, 12)]
+
+    class Rejecting(FakeKernel32):
+        def SetProcessInformation(self, *a):
+            return 0
+
+    assert inject_win.disable_power_throttling(Rejecting()) is False

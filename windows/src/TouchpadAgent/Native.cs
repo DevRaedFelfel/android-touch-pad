@@ -64,9 +64,17 @@ internal static class Kernel32
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetModuleHandleW(string? name);
     [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
     [DllImport("kernel32.dll")] public static extern bool AttachConsole(uint processId);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool SetProcessInformation(IntPtr process, int informationClass, ref PROCESS_POWER_THROTTLING_STATE info, uint size);
     [DllImport("kernel32.dll")] public static extern bool SetPriorityClass(IntPtr process, uint priorityClass);
     [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
     [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct PROCESS_POWER_THROTTLING_STATE
+{
+    public uint Version, ControlMask, StateMask;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -110,6 +118,18 @@ internal struct NOTIFYICONDATA
     public uint dwInfoFlags;
     public Guid guidItem;
     public IntPtr hBalloonIcon;
+}
+
+[SupportedOSPlatform("windows")]
+internal static class PowerTuning
+{
+    /// <summary>Opt this process out of Windows power throttling (efficiency cores, ignored 1 ms timer) so that the
+    /// first moves after a pause are not late and bursty. Older Windows rejects the call; that is fine.</summary>
+    public static bool DisableThrottling()
+    {
+        var state = new PROCESS_POWER_THROTTLING_STATE { Version = 1, ControlMask = 0x1 | 0x4, StateMask = 0 };
+        return Kernel32.SetProcessInformation(Kernel32.GetCurrentProcess(), 4, ref state, (uint)Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
+    }
 }
 
 /// <summary>The real Windows implementation of <see cref="INativeInput"/>.</summary>

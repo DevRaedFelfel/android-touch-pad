@@ -249,3 +249,7 @@ html, body {
 #toast[hidden] {
   display: none;
 }
+
+#settings input:disabled {
+  opacity: 0.35;
+}
